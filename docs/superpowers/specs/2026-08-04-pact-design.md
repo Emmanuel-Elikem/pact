@@ -16,37 +16,40 @@ Pact locks campaign rewards in on-chain escrow and releases payout only when a c
 
 ## Visual system
 
+Mobile-first premium fintech (patterns from Affirm/health refs — not their branding):
+
+- Phone column shell (`max-width: 28rem`), soft grey page chrome
+- Deep navy primary CTAs (`#0B1F3A`), black secondary, floating glass pill bottom nav
+- Hero escrow gradient card (navy→indigo) with eye/copy for address
+- Big money hierarchy, tonal white cards ~24px radius, thin Lucide icons
+- Status accent indigo for state labels
+
 ### Palette (tokens)
 
 | Token | Hex | Role |
 |-------|-----|------|
-| `--bg` | `#FFF8F1` | Warm off-white page |
-| `--ink` | `#1C1917` | Primary text |
-| `--cocoa` | `#3D2314` | Brand / emphasis |
-| `--leaf` | `#2F6F4E` | Success / primary CTA |
-| `--gold` | `#E8B84A` | Accent / progress |
-| `--surface` | `#FFFFFF` | Cards / sheets |
-| `--muted` | `#78716C` | Secondary text |
-| `--surface-tonal` | `#F3EDE4` | Soft tonal fills |
+| `--bg` | `#F5F5F7` | App background |
+| `--surface` | `#FFFFFF` | Cards |
+| `--ink` / `--navy` | `#0B1F3A` | Text + primary buttons |
+| `--accent` | `#4F46E5` | Status / links |
+| `--muted` | `#8B93A7` | Labels |
+| `--leaf` | `#16A34A` | Success |
+| `--gold` | `#C9A227` | Soft accent |
 
-Avoid: purple gradients, cream+terracotta serif cliché, broadsheet, dark-mode default, glow spam.
+Avoid: purple-everything landing pages, Affirm/Opal logos, dark mode default, neo-brutal stickers.
 
 ### Typography
 
-- **Display:** Fraunces (soft character for brand wordmark / heroes)  
-- **Body / UI:** Plus Jakarta Sans  
-
-### Shape & elevation
-
-- Ultra-rounded: buttons/FABs `border-radius: 999px`; cards `24–28px`  
-- Soft tonal fills; Material 3–like spacing (8pt grid)  
-- Icons: lucide-react, consistent stroke, touch targets ≥44px
+- **Display:** Fraunces (wordmark sparingly)
+- **Body / UI:** Plus Jakarta Sans — large bold amounts, small grey labels
 
 ### Signature motion
 
-1. **Pact pulse** — animated progress ring / locked-fund capsule that fills as campaign progresses  
-2. Page enter / list stagger (framer-motion)  
-3. Tx pending → success toast microfeedback  
+1. **Escrow pulse** — circular progress ring filling Created→Paid  
+2. List/card enter stagger  
+3. Tx pending → success toasts  
+
+Respect `prefers-reduced-motion`.
 
 ## Routes
 

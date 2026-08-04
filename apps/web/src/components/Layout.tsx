@@ -50,12 +50,12 @@ export function Layout() {
 
       <nav className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-4 pb-4">
         <div className="pointer-events-auto flex items-center justify-around rounded-full border border-white/70 bg-white/90 px-1 py-2 shadow-[0_12px_40px_-16px_rgba(11,31,58,0.45)] backdrop-blur-xl">
-          <NavItem to="/" icon={Home} label="Home" active={pathname === '/' && !onDetail} />
+          <NavItem to="/" icon={Home} label="Home" active={pathname === '/'} />
           <NavItem
             to="/"
             icon={Sparkles}
             label="Campaigns"
-            active={onDetail || pathname === '/'}
+            active={onDetail}
           />
           <NavItem
             to="/campaigns/new"
