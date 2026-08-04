@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle2, Coins } from 'lucide-react'
+import { CheckCircle2, Coins, Copy } from 'lucide-react'
 import { formatEther } from 'ethers'
 import { Button } from '../components/Button'
 import { useToast } from '../context/ToastProvider'
 import { useWallet } from '../context/WalletProvider'
 import { getContracts, readProvider } from '../lib/contracts'
 import { formatUsdc, parseUsdc, truncateAddress } from '../lib/format'
+import { loadCreatorProfile } from '../lib/store'
 
 const DEMO_AMOUNT = '1000'
 
@@ -19,6 +20,27 @@ export function Funds() {
   const [usdcBal, setUsdcBal] = useState<string>('—')
   const [busy, setBusy] = useState(false)
   const [last, setLast] = useState<string | null>(null)
+  const username = loadCreatorProfile().username.trim()
+
+  async function copyAddress() {
+    if (!address) return
+    try {
+      await navigator.clipboard.writeText(address)
+      push({ kind: 'success', title: 'Address copied' })
+    } catch {
+      push({ kind: 'error', title: 'Could not copy address' })
+    }
+  }
+
+  async function copyUsername() {
+    if (!username) return
+    try {
+      await navigator.clipboard.writeText(username)
+      push({ kind: 'success', title: 'Username copied' })
+    } catch {
+      push({ kind: 'error', title: 'Could not copy username' })
+    }
+  }
 
   async function refresh() {
     if (!address) return
@@ -118,9 +140,38 @@ export function Funds() {
 
       <div className="card-surface p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">Your account</p>
-        <p className="mt-1 font-mono text-sm font-semibold text-ink">
-          {address ? truncateAddress(address, 6) : 'Not signed in'}
-        </p>
+        {address ? (
+          <div className="mt-2 flex items-center gap-2">
+            <p className="min-w-0 flex-1 font-mono text-sm font-semibold text-ink">
+              {truncateAddress(address, 6)}
+            </p>
+            <button
+              type="button"
+              onClick={() => void copyAddress()}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-bg px-3 py-1.5 text-xs font-semibold text-navy ring-1 ring-border hover:bg-navy-soft"
+              aria-label="Copy wallet address"
+            >
+              <Copy className="size-3.5" />
+              Copy
+            </button>
+          </div>
+        ) : (
+          <p className="mt-1 font-mono text-sm font-semibold text-ink">Not signed in</p>
+        )}
+        {username ? (
+          <div className="mt-2 flex items-center gap-2">
+            <p className="min-w-0 flex-1 text-sm text-muted">@{username}</p>
+            <button
+              type="button"
+              onClick={() => void copyUsername()}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-semibold text-muted hover:bg-bg hover:text-navy"
+              aria-label="Copy username"
+            >
+              <Copy className="size-3" />
+              Copy
+            </button>
+          </div>
+        ) : null}
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-bg px-3 py-3">
             <p className="text-[11px] text-muted">Network balance</p>
