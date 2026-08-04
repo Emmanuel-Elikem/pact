@@ -8,11 +8,15 @@ Built for a hackathon demo: real Foundry contracts + a mobile-first premium web 
 
 ## What’s real vs mock
 
-| Real | Mock |
+| Real (on-chain / SDK) | Demo / mock |
 |------|------|
-| `MockUSDC` + `CampaignEscrow` Solidity (Foundry) | TikTok OAuth / metrics API |
-| On-chain txs via Anvil (or Base Sepolia addresses) | Metric values from localStorage mock |
-| WAAP (`@human.tech/waap-sdk`) when available | Demo Anvil private key fallback |
+| `MockUSDC` + `CampaignEscrow` Solidity (Foundry) | TikTok OAuth + view counts (localStorage) |
+| Create / fund / submit / record / release / refund txs | Metric values invented for the demo |
+| ERC-20 `transfer` send between wallets | “Get demo funds” mint (fake USDC faucet) |
+| WAAP login when SDK + network work | **Demo wallet** = Anvil account #0 private key |
+| Campaign list read from the chain | No separate creator accounts DB — roles = wallet actions |
+
+**Screens:** Brand/Creator toggle · Home · Campaigns (7 mock + on-chain) · Launch Campaign (ethers escrow) · Creator Profile · Dashboard · Faucet (test ETH/USDC)
 
 ## UI
 
@@ -57,21 +61,40 @@ Open http://127.0.0.1:5173 → **Demo wallet** for local Anvil.
 ### 3-minute demo script
 
 1. Sign in with **Demo wallet**
-2. **Faucet** → mint 500 mUSDC
+2. **Wallet → Receive → Get demo funds** (mint mUSDC)
 3. **Create** → reward 50, min views 10000, fund
-4. On campaign: **Submit content URL** (same wallet can act as creator for demo)
+4. **Creators** tab → open the funded campaign → **Submit content URL**
 5. **Connect TikTok** (mock) → **Record & release payout**
-6. See success + tx hash
+6. See success + tx hash  
+   Optional: **Wallet → Send** to another Anvil address (e.g. account #1)
 
-## Base Sepolia
+## Ethereum Sepolia (live deploy)
 
-Set `VITE_CHAIN_ID=84532`, deploy with a funded key:
+Primary testnet is **Ethereum Sepolia** (chain `11155111`).
+
+| Contract | Address |
+|----------|---------|
+| MockUSDC | Set in `apps/web/.env` as `VITE_SEPOLIA_USDC` after deploy |
+| CampaignEscrow | Set in `apps/web/.env` as `VITE_SEPOLIA_ESCROW` after deploy |
+
+Deploy:
 
 ```bash
-forge script script/Deploy.s.sol:Deploy --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast --private-key $PK
+PRIVATE_KEY=0x... ./scripts/deploy-sepolia.sh
 ```
 
-Set `VITE_BASE_SEPOLIA_USDC` / `VITE_BASE_SEPOLIA_ESCROW`.
+App `.env` defaults to `VITE_CHAIN_ID=11155111`. Demo account uses Anvil #0 (fund it on Sepolia for demos).
+
+### Base Sepolia (legacy)
+
+Previously deployed on Base Sepolia (`84532`):
+
+| Contract | Address |
+|----------|---------|
+| MockUSDC | [`0xF07Ac92C88d2fDF634B7e20836E7E38De8EBACd2`](https://sepolia.basescan.org/address/0xF07Ac92C88d2fDF634B7e20836E7E38De8EBACd2) |
+| CampaignEscrow | [`0xb5921E30AC63793591023F61D84a55Bb13488522`](https://sepolia.basescan.org/address/0xb5921E30AC63793591023F61D84a55Bb13488522) |
+
+Redeploy Base: `PRIVATE_KEY=0x... ./scripts/deploy-base-sepolia.sh`
 
 ## WAAP
 
@@ -83,9 +106,10 @@ Optional `VITE_WAAP_PROJECT_ID` from human.tech portal. Without it, WAAP login m
 - [ ] `npm run build` in `apps/web`
 - [ ] Anvil running + contracts deployed
 - [ ] Demo wallet signs in
-- [ ] Faucet mints; create+fund campaign
+- [ ] Wallet Receive mints; Send transfers mUSDC
+- [ ] Create+fund campaign; Creators tab lists it
 - [ ] Submit → mock TikTok → release
-- [ ] UI readable at ~390px width; bottom pill nav visible
+- [ ] Create/Wallet inputs not covered by bottom CTAs/nav
 
 ## Repo layout
 

@@ -1,4 +1,5 @@
 export const ANVIL_CHAIN_ID = 31337
+export const SEPOLIA_CHAIN_ID = 11155111
 export const BASE_SEPOLIA_CHAIN_ID = 84532
 
 export const CHAINS = {
@@ -7,6 +8,14 @@ export const CHAINS = {
     name: 'Anvil',
     rpcUrl: (import.meta.env.VITE_ANVIL_RPC as string) || 'http://127.0.0.1:8545',
     explorer: '',
+  },
+  [SEPOLIA_CHAIN_ID]: {
+    id: SEPOLIA_CHAIN_ID,
+    name: 'Ethereum Sepolia',
+    rpcUrl:
+      (import.meta.env.VITE_SEPOLIA_RPC as string) ||
+      'https://ethereum-sepolia-rpc.publicnode.com',
+    explorer: 'https://sepolia.etherscan.io',
   },
   [BASE_SEPOLIA_CHAIN_ID]: {
     id: BASE_SEPOLIA_CHAIN_ID,
@@ -19,8 +28,9 @@ export const CHAINS = {
 } as const
 
 export function defaultChainId(): number {
-  const fromEnv = Number(import.meta.env.VITE_CHAIN_ID || ANVIL_CHAIN_ID)
-  return fromEnv in CHAINS ? fromEnv : ANVIL_CHAIN_ID
+  // Prefer Ethereum Sepolia for deployed demos; override with VITE_CHAIN_ID=31337 for Anvil.
+  const fromEnv = Number(import.meta.env.VITE_CHAIN_ID || SEPOLIA_CHAIN_ID)
+  return fromEnv in CHAINS ? fromEnv : SEPOLIA_CHAIN_ID
 }
 
 export function explorerTx(chainId: number, hash: string): string | null {

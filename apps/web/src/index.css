@@ -17,8 +17,8 @@
   --color-danger: #b42318;
   --color-danger-soft: #fef3f2;
   --color-border: rgba(11, 31, 58, 0.06);
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
   --radius-card: 1.5rem;
   --radius-pill: 999px;
   --app-max: 28rem;
@@ -83,7 +83,8 @@
       margin-top: 1.5rem;
       margin-bottom: 1.5rem;
       border-radius: 2rem;
-      overflow: hidden;
+      /* visible so third-party auth modals (WaaP) are not clipped */
+      overflow: visible;
     }
   }
 
