@@ -167,7 +167,7 @@ export function Profile() {
 
       <section className="card-surface p-4">
         <h2 className="text-[15px] font-bold">Wallet</h2>
-        <p className="mt-1 text-sm text-muted">Connected via Trendit (WaaP / Demo).</p>
+        <p className="mt-1 text-sm text-muted">Connected via Trendit (secure sign-in / demo).</p>
         <p className="mt-2 font-mono text-xs font-semibold">{truncateAddress(address, 6)}</p>
       </section>
 

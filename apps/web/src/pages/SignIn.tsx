@@ -122,11 +122,14 @@ export function SignIn() {
 
         <div className="mt-6 space-y-3">
           <Button loading={connecting} onClick={() => void onWaap()}>
-            <Wallet className="size-4" /> Continue with WaaP
+            <Wallet className="size-4" /> Continue with email
           </Button>
           <Button variant="secondary" loading={connecting} onClick={() => void onDemo()}>
             <KeyRound className="size-4" /> Try demo account
           </Button>
+          <p className="text-center text-[11px] text-muted">
+            Secure sign-in — no seed phrases to manage.
+          </p>
         </div>
 
         {(localError || error) && (

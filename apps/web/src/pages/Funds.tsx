@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Coins, Sparkles } from 'lucide-react'
-import { formatEther, parseEther } from 'ethers'
+import { useNavigate } from 'react-router-dom'
+import { CheckCircle2, Coins } from 'lucide-react'
+import { formatEther } from 'ethers'
 import { Button } from '../components/Button'
 import { useToast } from '../context/ToastProvider'
 import { useWallet } from '../context/WalletProvider'
 import { getContracts, readProvider } from '../lib/contracts'
 import { formatUsdc, parseUsdc, truncateAddress } from '../lib/format'
 
-/** Friendly “top up” page — formerly faucet */
+const DEMO_AMOUNT = '1000'
+
+/** One-click demo USDC top-up for the connected wallet */
 export function Funds() {
+  const navigate = useNavigate()
   const { signer, chainId, address } = useWallet()
   const { withTx, push } = useToast()
   const [ethBal, setEthBal] = useState<string>('—')
   const [usdcBal, setUsdcBal] = useState<string>('—')
-  const [busy, setBusy] = useState<'gas' | 'reward' | null>(null)
+  const [busy, setBusy] = useState(false)
   const [last, setLast] = useState<string | null>(null)
 
   async function refresh() {
@@ -37,38 +41,67 @@ export function Funds() {
     void refresh()
   }, [address, chainId])
 
-  async function getGasHelp() {
-    if (!signer || !address) return
-    setBusy('gas')
-    try {
-      await withTx('Confirm network access', async () => {
-        const tx = await signer.sendTransaction({ to: address, value: parseEther('0') })
-        await tx.wait()
-      })
-      setLast('Network access confirmed. Demo accounts already include spending balance.')
+  async function getDemoFunds() {
+    if (!address) {
       push({
-        kind: 'success',
-        title: 'Ready to go',
-        detail: 'You can create and fund campaigns.',
+        kind: 'info',
+        title: 'Sign in first',
+        detail: 'Connect your account, then tap Get demo funds.',
       })
-      await refresh()
-    } finally {
-      setBusy(null)
+      navigate('/signin')
+      return
     }
-  }
 
-  async function getRewardTokens() {
-    if (!signer || !address) return
-    setBusy('reward')
+    setBusy(true)
     try {
-      await withTx('Add demo reward balance', async () => {
-        const { usdc } = getContracts(signer, chainId)
-        await (await usdc.mint(address, parseUsdc('100'))).wait()
+      const r = await fetch('/api/faucet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, chainId }),
       })
-      setLast('Added 100 demo dollars to your balance.')
-      await refresh()
+      const data = (await r.json()) as {
+        ok?: boolean
+        amount?: string
+        error?: string
+      }
+
+      if (r.ok) {
+        const amt = data.amount || DEMO_AMOUNT
+        setLast(`You received $${amt} demo USDC.`)
+        push({
+          kind: 'success',
+          title: `You received $${amt} demo USDC`,
+          detail: 'Ready to fund campaigns.',
+        })
+        await refresh()
+        return
+      }
+
+      // Fallback: MockUSDC has public mint — mint from connected wallet
+      if (signer) {
+        await withTx('Get demo funds', async () => {
+          const { usdc } = getContracts(signer, chainId)
+          await (await usdc.mint(address, parseUsdc(DEMO_AMOUNT))).wait()
+        })
+        setLast(`You received $${DEMO_AMOUNT} demo USDC.`)
+        push({
+          kind: 'success',
+          title: `You received $${DEMO_AMOUNT} demo USDC`,
+          detail: 'Ready to fund campaigns.',
+        })
+        await refresh()
+        return
+      }
+
+      throw new Error(data.error || 'Faucet failed')
+    } catch (e) {
+      push({
+        kind: 'error',
+        title: 'Could not get demo funds',
+        detail: e instanceof Error ? e.message : 'Try again',
+      })
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
@@ -79,14 +112,14 @@ export function Funds() {
         <h1 className="mt-0.5 text-[28px] font-bold tracking-tight text-ink">Add demo funds</h1>
       </div>
       <p className="text-sm text-muted">
-        Grab practice balance so you can try launching campaigns. This is demo money — not real
-        cash.
+        One tap adds ${DEMO_AMOUNT} demo USDC (test dollars) to your signed-in wallet — enough to
+        create, fund, and try a creator payout. Not real cash.
       </p>
 
       <div className="card-surface p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">Your account</p>
         <p className="mt-1 font-mono text-sm font-semibold text-ink">
-          {address ? truncateAddress(address, 6) : '—'}
+          {address ? truncateAddress(address, 6) : 'Not signed in'}
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-bg px-3 py-3">
@@ -94,20 +127,15 @@ export function Funds() {
             <p className="text-lg font-bold">{ethBal}</p>
           </div>
           <div className="rounded-2xl bg-bg px-3 py-3">
-            <p className="text-[11px] text-muted">Campaign dollars</p>
+            <p className="text-[11px] text-muted">Demo USDC (test dollars)</p>
             <p className="text-lg font-bold">${usdcBal}</p>
           </div>
         </div>
       </div>
 
-      <div className="space-y-3">
-        <Button loading={busy === 'gas'} onClick={() => void getGasHelp()}>
-          <Sparkles className="size-4" /> Check network access
-        </Button>
-        <Button variant="secondary" loading={busy === 'reward'} onClick={() => void getRewardTokens()}>
-          <Coins className="size-4" /> Get 100 demo dollars
-        </Button>
-      </div>
+      <Button loading={busy} onClick={() => void getDemoFunds()}>
+        <Coins className="size-4" /> Get demo funds
+      </Button>
 
       {last && (
         <div className="rounded-[1.5rem] bg-leaf-soft p-5">

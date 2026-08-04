@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, ImagePlus, X } from 'lucide-react'
+import { ArrowLeft, Check, ImagePlus, Sparkles, X } from 'lucide-react'
+import { AiChat } from '../components/AiChat'
 import { Button } from '../components/Button'
 import { useToast } from '../context/ToastProvider'
 import { useWallet } from '../context/WalletProvider'
 import { useApp } from '../context/AppProvider'
+import { clearDraft, loadDraft } from '../lib/ai'
 import { getContracts } from '../lib/contracts'
 import { daysFromNow, parseUsdc, truncateAddress } from '../lib/format'
 import { fileToDataUrl, saveLocalBrief } from '../lib/store'
@@ -62,6 +64,31 @@ export function NewCampaign() {
   const [coverImage, setCoverImage] = useState('')
   const [assetImages, setAssetImages] = useState<string[]>([])
   const [selectionMode, setSelectionMode] = useState<CreatorSelectionMode>('brand_picks')
+  const [aiOpen, setAiOpen] = useState(false)
+  const [nextTips, setNextTips] = useState<string[]>([])
+
+  useEffect(() => {
+    const draft = loadDraft()
+    if (!draft) return
+    setTitle(draft.title || '')
+    setDescription(draft.description || '')
+    if (draft.campaignType) setCampaignType(draft.campaignType)
+    if (draft.category) setCategory(draft.category)
+    if (draft.reward) setReward(String(draft.reward))
+    if (draft.minViews) setMinViews(String(draft.minViews))
+    if (draft.days) setDays(String(draft.days))
+    if (draft.platforms?.length) setPlatforms(draft.platforms)
+    if (draft.deliverables) setDeliverables(draft.deliverables)
+    if (draft.hashtags) setHashtags(draft.hashtags)
+    if (draft.wantStyle) setWantStyle(draft.wantStyle)
+    if (draft.avoidStyle) setAvoidStyle(draft.avoidStyle)
+    if (draft.talkingPoints) setTalkingPoints(draft.talkingPoints)
+    if (draft.dos) setDos(draft.dos)
+    if (draft.donts) setDonts(draft.donts)
+    if (draft.selectionMode) setSelectionMode(draft.selectionMode)
+    if (draft.nextTips?.length) setNextTips(draft.nextTips)
+    clearDraft()
+  }, [])
 
   if (role !== 'brand') {
     return (
@@ -198,6 +225,9 @@ export function NewCampaign() {
           <p className="text-sm text-muted">
             Tell creators what this campaign is about — they’ll see every detail.
           </p>
+          <Button variant="secondary" onClick={() => setAiOpen(true)}>
+            <Sparkles className="size-4" /> Ask AI to draft my campaign
+          </Button>
           <Field label="Campaign title" value={title} onChange={setTitle} />
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold uppercase text-muted">
@@ -438,9 +468,23 @@ export function NewCampaign() {
               Creators can now see your brief, photos, and apply.
             </p>
           </div>
+          {(nextTips.length
+            ? nextTips
+            : [
+                'Pick creators from applications (or leave it open).',
+                'Share the campaign link so creators can find it.',
+                'Keep demo dollars topped up from Funds if needed.',
+              ]
+          ).map((tip) => (
+            <p key={tip} className="text-sm text-muted">
+              · {tip}
+            </p>
+          ))}
           <Button onClick={() => navigate(`/campaigns/${liveId}`)}>View campaign</Button>
         </div>
       )}
+
+      <AiChat mode="campaign" open={aiOpen} onClose={() => setAiOpen(false)} />
     </div>
   )
 }

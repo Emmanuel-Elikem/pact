@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw, Sparkles } from 'lucide-react'
+import { AiChat } from '../components/AiChat'
 import { CampaignGrid } from '../components/CampaignCard'
 import { Button } from '../components/Button'
 import { useApp } from '../context/AppProvider'
@@ -14,6 +15,7 @@ export function Campaigns() {
   const navigate = useNavigate()
   const [items, setItems] = useState<UnifiedCampaign[]>([])
   const [loading, setLoading] = useState(true)
+  const [aiOpen, setAiOpen] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -61,8 +63,19 @@ export function Campaigns() {
       </p>
 
       {isBrand && (
-        <Button onClick={() => navigate('/campaigns/new')}>
-          <Plus className="size-4" /> Create campaign
+        <div className="space-y-2">
+          <Button onClick={() => navigate('/campaigns/new')}>
+            <Plus className="size-4" /> Create campaign
+          </Button>
+          <Button variant="secondary" onClick={() => setAiOpen(true)}>
+            <Sparkles className="size-4" /> Ask AI to draft my campaign
+          </Button>
+        </div>
+      )}
+
+      {!isBrand && (
+        <Button variant="secondary" onClick={() => setAiOpen(true)}>
+          <Sparkles className="size-4" /> Ask AI — how to apply
         </Button>
       )}
 
@@ -77,6 +90,14 @@ export function Campaigns() {
       )}
 
       {!loading && items.length > 0 && <CampaignGrid items={items} />}
+
+      <AiChat
+        mode={isBrand ? 'campaign' : 'creator'}
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        title={isBrand ? 'Campaign Manager' : 'Creator tips'}
+        context={!isBrand ? 'Marketplace advice for applying to Trendit campaigns.' : undefined}
+      />
     </div>
   )
 }

@@ -39,7 +39,7 @@ export function Layout() {
             </span>
             <span className="mt-1 block text-[11px] text-muted">
               {label} · {truncateAddress(address)}
-              {mode === 'demo' ? ' · Demo' : mode === 'waap' ? ' · WaaP' : ''}
+              {mode === 'demo' ? ' · Demo' : mode === 'waap' ? ' · Signed in' : ''}
             </span>
           </span>
         </button>

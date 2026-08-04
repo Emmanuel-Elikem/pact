@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, Rocket, WalletCards } from 'lucide-react'
+import { ArrowRight, Rocket, Sparkles, WalletCards } from 'lucide-react'
+import { AiChat } from '../components/AiChat'
 import { CampaignGrid } from '../components/CampaignCard'
 import { Button } from '../components/Button'
 import { useApp } from '../context/AppProvider'
@@ -13,6 +14,7 @@ export function Home() {
   const { chainId } = useWallet()
   const navigate = useNavigate()
   const [items, setItems] = useState<UnifiedCampaign[]>([])
+  const [aiOpen, setAiOpen] = useState(false)
 
   useEffect(() => {
     if (role === 'creator') {
@@ -42,7 +44,17 @@ export function Home() {
         <Button onClick={() => navigate('/campaigns')}>
           Browse campaigns <ArrowRight className="size-4" />
         </Button>
+        <Button variant="secondary" onClick={() => setAiOpen(true)}>
+          <Sparkles className="size-4" /> Ask AI — how to apply
+        </Button>
         <CampaignGrid items={open} />
+        <AiChat
+          mode="creator"
+          open={aiOpen}
+          onClose={() => setAiOpen(false)}
+          title="Creator tips"
+          context="General marketplace advice for Trendit creators."
+        />
       </div>
     )
   }
@@ -69,6 +81,9 @@ export function Home() {
       <Button onClick={() => navigate('/campaigns/new')}>
         <Rocket className="size-4" /> Create campaign
       </Button>
+      <Button variant="secondary" onClick={() => setAiOpen(true)}>
+        <Sparkles className="size-4" /> Ask AI to draft my campaign
+      </Button>
       <Button variant="secondary" onClick={() => navigate('/funds')}>
         <WalletCards className="size-4" /> Add demo funds
       </Button>
@@ -84,6 +99,8 @@ export function Home() {
       ) : (
         <CampaignGrid items={items.slice(0, 6)} />
       )}
+
+      <AiChat mode="campaign" open={aiOpen} onClose={() => setAiOpen(false)} />
     </div>
   )
 }

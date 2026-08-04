@@ -7,8 +7,10 @@ import {
   Loader2,
   PartyPopper,
   Play,
+  Sparkles,
   Undo2,
 } from 'lucide-react'
+import { AiChat } from '../components/AiChat'
 import { Button } from '../components/Button'
 import { EscrowHeroCard } from '../components/EscrowHeroCard'
 import { PactPulse } from '../components/PactPulse'
@@ -60,6 +62,7 @@ function BriefCampaignDetail({ brief }: { brief: CampaignBrief }) {
   const [checking, setChecking] = useState(false)
   const [busy, setBusy] = useState(false)
   const [chain, setChain] = useState<CampaignView | null>(null)
+  const [aiOpen, setAiOpen] = useState(false)
 
   const mode = brief.selectionMode || 'open'
   const selected =
@@ -285,7 +288,18 @@ function BriefCampaignDetail({ brief }: { brief: CampaignBrief }) {
       )}
 
       {role === 'creator' && !applied && (
-        <Button onClick={onApply}>I want to join this campaign</Button>
+        <div className="space-y-2">
+          <Button onClick={onApply}>I want to join this campaign</Button>
+          <Button variant="secondary" onClick={() => setAiOpen(true)}>
+            <Sparkles className="size-4" /> Ask AI — tips to apply
+          </Button>
+        </div>
+      )}
+
+      {role === 'creator' && applied && (
+        <Button variant="secondary" onClick={() => setAiOpen(true)}>
+          <Sparkles className="size-4" /> Ask AI — what to submit
+        </Button>
       )}
 
       {role === 'creator' && applied && !canSubmit && (
@@ -371,6 +385,14 @@ function BriefCampaignDetail({ brief }: { brief: CampaignBrief }) {
           )}
         </section>
       )}
+
+      <AiChat
+        mode="creator"
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        title="Creator tips"
+        context={`Campaign: ${brief.title}\nBrief: ${brief.description}\nDeliverables: ${brief.deliverables}\nWant: ${brief.wantStyle}\nAvoid: ${brief.avoidStyle}`}
+      />
     </div>
   )
 }
