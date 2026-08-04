@@ -14,6 +14,12 @@ import { AiChat } from '../components/AiChat'
 import { Button } from '../components/Button'
 import { EscrowHeroCard } from '../components/EscrowHeroCard'
 import { PactPulse } from '../components/PactPulse'
+import {
+  WalletTxModal,
+  mockTxHash,
+  sleep,
+  type WalletTxStatus,
+} from '../components/WalletTxModal'
 import { useApp } from '../context/AppProvider'
 import { useToast } from '../context/ToastProvider'
 import { useWallet } from '../context/WalletProvider'
@@ -27,6 +33,7 @@ import {
   isCreatorSelected,
   loadApplied,
   loadSubmissions,
+  saveLocalBrief,
   saveSubmission,
   setApplicantSelected,
   type LocalSubmission,
@@ -45,11 +52,12 @@ export function CampaignDetail() {
   return <p className="text-danger">Campaign not found</p>
 }
 
-function BriefCampaignDetail({ brief }: { brief: CampaignBrief }) {
+function BriefCampaignDetail({ brief: initialBrief }: { brief: CampaignBrief }) {
   const { role, creator } = useApp()
   const navigate = useNavigate()
   const { signer, chainId, address } = useWallet()
   const { withTx, push } = useToast()
+  const [brief, setBrief] = useState(initialBrief)
   const [applied, setApplied] = useState(() => loadApplied().includes(brief.id))
   const [applicants, setApplicants] = useState(() => getApplicantsFor(brief.id))
   const [sub, setSub] = useState<LocalSubmission | undefined>(
@@ -63,6 +71,11 @@ function BriefCampaignDetail({ brief }: { brief: CampaignBrief }) {
   const [busy, setBusy] = useState(false)
   const [chain, setChain] = useState<CampaignView | null>(null)
   const [aiOpen, setAiOpen] = useState(false)
+  const [walletOpen, setWalletOpen] = useState(false)
+  const [walletStatus, setWalletStatus] = useState<WalletTxStatus>('review')
+  const [walletTxHash, setWalletTxHash] = useState<string | null>(null)
+  const [walletIsMock, setWalletIsMock] = useState(true)
+  const [walletError, setWalletError] = useState('')
 
   const mode = brief.selectionMode || 'open'
   const selected =
@@ -159,6 +172,77 @@ function BriefCampaignDetail({ brief }: { brief: CampaignBrief }) {
       })
     }, 1600)
   }
+
+  function openPayoutWallet() {
+    const useMock = brief.chainNumericId == null || !signer
+    setWalletIsMock(useMock)
+    setWalletStatus('review')
+    setWalletTxHash(null)
+    setWalletError('')
+    setWalletOpen(true)
+  }
+
+  async function confirmPayoutWallet() {
+    const useMock = brief.chainNumericId == null || !signer
+    setBusy(true)
+    setWalletError('')
+    setWalletIsMock(useMock)
+    setWalletStatus('signing')
+
+    try {
+      if (useMock) {
+        await sleep(800)
+        setWalletStatus('pending')
+        await sleep(1200)
+        const hash = mockTxHash()
+        const next: CampaignBrief = { ...brief, status: 'paid' }
+        saveLocalBrief(next)
+        setBrief(next)
+        setWalletTxHash(hash)
+        setWalletStatus('success')
+        push({
+          kind: 'success',
+          title: 'Payment sent',
+          detail: `$${brief.budgetUsdc.toLocaleString()} released to creator.`,
+        })
+        return
+      }
+
+      if (!signer || brief.chainNumericId == null) {
+        setWalletStatus('error')
+        setWalletError('Connect a wallet to release on-chain escrow.')
+        return
+      }
+
+      const { escrow } = getContracts(signer, chainId)
+      const views = BigInt(sub?.views || brief.minViews)
+      setWalletStatus('pending')
+      await (await escrow.recordMetric(brief.chainNumericId, views)).wait()
+      const releaseTx = await escrow.releasePayout(brief.chainNumericId)
+      const receipt = await releaseTx.wait()
+      const hash = receipt?.hash ?? releaseTx.hash
+      const next: CampaignBrief = { ...brief, status: 'paid' }
+      saveLocalBrief(next)
+      setBrief(next)
+      setWalletTxHash(hash)
+      setWalletIsMock(false)
+      setWalletStatus('success')
+      void fetchCampaign(chainId, brief.chainNumericId).then(setChain).catch(() => null)
+      push({
+        kind: 'success',
+        title: 'Payment sent',
+        detail: `$${brief.budgetUsdc.toLocaleString()} released on Sepolia.`,
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Transaction failed'
+      setWalletStatus('error')
+      setWalletError(msg.slice(0, 160))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const paid = brief.status === 'paid'
 
   return (
     <div className="space-y-4">
@@ -386,6 +470,52 @@ function BriefCampaignDetail({ brief }: { brief: CampaignBrief }) {
         </section>
       )}
 
+      {paid && (
+        <div className="rounded-[1.5rem] bg-leaf-soft p-5">
+          <div className="flex items-center gap-2 text-leaf">
+            <PartyPopper className="size-5" />
+            <h2 className="text-[17px] font-bold">Payment sent</h2>
+          </div>
+          <p className="mt-2 text-sm">
+            ${brief.budgetUsdc.toLocaleString()} released from escrow
+            {walletTxHash ? ` · ${truncateAddress(walletTxHash, 6)}` : ''}.
+          </p>
+        </div>
+      )}
+
+      {role === 'brand' && !paid && (
+        <section className="card-surface space-y-3 p-4">
+          <h3 className="text-[15px] font-bold">Release escrow</h3>
+          <p className="text-sm text-muted">
+            {sub?.status === 'verified'
+              ? 'Metrics cleared the view goal. Pay the creator from locked campaign funds.'
+              : 'Release locked reward funds to the creator when work is complete.'}
+          </p>
+          <Button loading={busy} onClick={openPayoutWallet}>
+            <CheckCircle2 className="size-4" /> Pay out
+          </Button>
+        </section>
+      )}
+
+      <WalletTxModal
+        open={walletOpen}
+        title="Pay creator"
+        description="Release escrow to the verified creator."
+        amountLabel={`$${brief.budgetUsdc.toLocaleString(undefined, {
+          maximumFractionDigits: 2,
+        })}`}
+        tokenLabel={walletIsMock ? 'USDC (demo)' : 'USDC'}
+        network="Ethereum Sepolia"
+        status={walletStatus}
+        txHash={walletTxHash}
+        isMockTx={walletIsMock}
+        errorMessage={walletError}
+        confirmLabel="Confirm"
+        onConfirm={() => void confirmPayoutWallet()}
+        onReject={() => setWalletOpen(false)}
+        onClose={() => setWalletOpen(false)}
+      />
+
       <AiChat
         mode="creator"
         open={aiOpen}
@@ -414,6 +544,10 @@ function ChainCampaignDetail({ id }: { id: number }) {
   )
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [walletOpen, setWalletOpen] = useState(false)
+  const [walletStatus, setWalletStatus] = useState<WalletTxStatus>('review')
+  const [walletTxHash, setWalletTxHash] = useState<string | null>(null)
+  const [walletError, setWalletError] = useState('')
 
   const isBrand = useMemo(
     () =>
@@ -443,6 +577,47 @@ function ChainCampaignDetail({ id }: { id: number }) {
     try {
       await withTx(label, fn)
       await reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function openReleaseWallet() {
+    setWalletStatus('review')
+    setWalletTxHash(null)
+    setWalletError('')
+    setWalletOpen(true)
+  }
+
+  async function confirmReleaseWallet() {
+    if (!signer || !tiktok) {
+      setWalletStatus('error')
+      setWalletError('Connect social metrics first, then confirm in wallet.')
+      return
+    }
+    setBusy(true)
+    setWalletError('')
+    setWalletStatus('signing')
+    try {
+      const { escrow } = getContracts(signer, chainId)
+      const metricTx = await escrow.recordMetric(id, BigInt(tiktok.viewCount))
+      setWalletStatus('pending')
+      await metricTx.wait()
+      const releaseTx = await escrow.releasePayout(id)
+      const receipt = await releaseTx.wait()
+      const hash = receipt?.hash ?? releaseTx.hash
+      setWalletTxHash(hash)
+      setWalletStatus('success')
+      await reload()
+      push({
+        kind: 'success',
+        title: 'Payment sent',
+        detail: 'Escrow released on Sepolia.',
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Transaction failed'
+      setWalletStatus('error')
+      setWalletError(msg.slice(0, 160))
     } finally {
       setBusy(false)
     }
@@ -481,6 +656,7 @@ function ChainCampaignDetail({ id }: { id: number }) {
           </div>
           <p className="mt-2 text-sm">
             ${formatUsdc(campaign.rewardAmount)} → {truncateAddress(submission?.creator)}
+            {walletTxHash ? ` · ${truncateAddress(walletTxHash, 6)}` : ''}
           </p>
         </div>
       )}
@@ -540,16 +716,7 @@ function ChainCampaignDetail({ id }: { id: number }) {
             <Button
               loading={busy}
               disabled={!tiktok?.connected}
-              onClick={() =>
-                void runTx('Release payment', async () => {
-                  if (!signer || !tiktok) throw new Error('Connect social first')
-                  const { escrow } = getContracts(signer, chainId)
-                  await (await escrow.recordMetric(id, BigInt(tiktok.viewCount))).wait()
-                  const releaseTx = await escrow.releasePayout(id)
-                  const receipt = await releaseTx.wait()
-                  return receipt?.hash ?? releaseTx.hash
-                })
-              }
+              onClick={openReleaseWallet}
             >
               <CheckCircle2 className="size-4" /> Release payment
             </Button>
@@ -574,6 +741,23 @@ function ChainCampaignDetail({ id }: { id: number }) {
           <Undo2 className="size-4" /> Return funds to brand
         </Button>
       )}
+
+      <WalletTxModal
+        open={walletOpen}
+        title="Pay creator"
+        description="Release escrow to the verified creator."
+        amountLabel={`$${formatUsdc(campaign.rewardAmount)}`}
+        tokenLabel="USDC"
+        network="Ethereum Sepolia"
+        status={walletStatus}
+        txHash={walletTxHash}
+        isMockTx={false}
+        errorMessage={walletError}
+        confirmLabel="Confirm"
+        onConfirm={() => void confirmReleaseWallet()}
+        onReject={() => setWalletOpen(false)}
+        onClose={() => setWalletOpen(false)}
+      />
     </div>
   )
 }

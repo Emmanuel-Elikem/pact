@@ -24,7 +24,9 @@ function briefToUnified(b: CampaignBrief): UnifiedCampaign {
         ? 'Open'
         : b.status === 'submitted'
           ? 'In review'
-          : b.status,
+          : b.status === 'paid'
+            ? 'Paid'
+            : b.status,
     statusKey: b.status,
     funded: b.status === 'live' || b.status === 'funded' || b.status === 'submitted',
     coverImage: b.coverImage,

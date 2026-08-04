@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Check, ImagePlus, Sparkles, X } from 'lucide-react'
 import { AiChat } from '../components/AiChat'
 import { Button } from '../components/Button'
+import {
+  WalletTxModal,
+  mockTxHash,
+  sleep,
+  type WalletTxStatus,
+} from '../components/WalletTxModal'
 import { useToast } from '../context/ToastProvider'
 import { useWallet } from '../context/WalletProvider'
 import { useApp } from '../context/AppProvider'
@@ -45,12 +51,17 @@ const PLATFORMS = ['TikTok', 'Instagram', 'YouTube', 'X']
 export function NewCampaign() {
   const { role, brand } = useApp()
   const { signer, chainId, address, mode } = useWallet()
-  const { withTx, push } = useToast()
+  const { push } = useToast()
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
   const [liveId, setLiveId] = useState<string | null>(null)
   const [demoUsdc, setDemoUsdc] = useState(() => loadDemoUsdc())
+  const [walletOpen, setWalletOpen] = useState(false)
+  const [walletStatus, setWalletStatus] = useState<WalletTxStatus>('review')
+  const [walletTxHash, setWalletTxHash] = useState<string | null>(null)
+  const [walletIsMock, setWalletIsMock] = useState(true)
+  const [walletError, setWalletError] = useState('')
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -168,7 +179,7 @@ export function NewCampaign() {
     }
   }
 
-  async function fundAndLaunch() {
+  function openFundWallet() {
     if (!title.trim() || !coverImage) {
       setStep(0)
       return
@@ -177,36 +188,9 @@ export function NewCampaign() {
 
     const rewardNum = Number(reward) || 0
     const mockBal = loadDemoUsdc()
+    const canMock = mockBal >= rewardNum && rewardNum > 0
 
-    // Prefer mock launch when demo balance covers the reward (no gas)
-    if (mockBal >= rewardNum && rewardNum > 0) {
-      setBusy(true)
-      try {
-        if (!deductDemoUsdc(rewardNum)) {
-          push({
-            kind: 'error',
-            title: 'Not enough demo funds',
-            detail: 'Top up from Funds, then try again.',
-          })
-          return
-        }
-        setDemoUsdc(loadDemoUsdc())
-        const brief = buildBrief(undefined, true)
-        saveLocalBrief(brief)
-        setLiveId(brief.id)
-        setStep(3)
-        push({
-          kind: 'success',
-          title: 'Campaign launched (demo)',
-          detail: `$${rewardNum} locked from demo balance.`,
-        })
-      } finally {
-        setBusy(false)
-      }
-      return
-    }
-
-    if (!signer || !address) {
+    if (!canMock && (!signer || !address)) {
       push({
         kind: 'info',
         title: 'Need demo funds or a wallet',
@@ -216,35 +200,96 @@ export function NewCampaign() {
       return
     }
 
+    setWalletIsMock(canMock)
+    setWalletStatus('review')
+    setWalletTxHash(null)
+    setWalletError('')
+    setWalletOpen(true)
+  }
+
+  async function confirmFundWallet() {
+    if (!rewardValid()) return
+    const rewardNum = Number(reward) || 0
+    const mockBal = loadDemoUsdc()
+    const useMock = mockBal >= rewardNum && rewardNum > 0
+
     setBusy(true)
+    setWalletError('')
+    setWalletIsMock(useMock)
+    setWalletStatus('signing')
+
     try {
+      if (useMock) {
+        await sleep(800)
+        setWalletStatus('pending')
+        await sleep(1200)
+        if (!deductDemoUsdc(rewardNum)) {
+          setWalletStatus('error')
+          setWalletError('Not enough demo funds. Top up from Funds, then try again.')
+          return
+        }
+        const hash = mockTxHash()
+        const brief = buildBrief(undefined, true)
+        saveLocalBrief(brief)
+        setDemoUsdc(loadDemoUsdc())
+        setLiveId(brief.id)
+        setWalletTxHash(hash)
+        setWalletStatus('success')
+        push({
+          kind: 'success',
+          title: 'Campaign launched',
+          detail: `$${rewardNum} locked · funds secured.`,
+        })
+        return
+      }
+
+      if (!signer || !address) {
+        setWalletStatus('error')
+        setWalletError('Connect a wallet with USDC, or get demo funds first.')
+        return
+      }
+
       const rewardAmount = parseUsdc(reward)
       const minMetric = BigInt(minViews.replace(/,/g, '') || '0')
       const deadline = BigInt(daysFromNow(Number(days) || 7))
 
-      const chainNumericId = await withTx('Create campaign', async () => {
-        const { escrow } = getContracts(signer, chainId)
-        const tx = await escrow.createCampaign(rewardAmount, minMetric, deadline)
-        await tx.wait()
-        return Number(await escrow.campaignCount())
-      })
+      const { escrow, usdc, addrs } = getContracts(signer, chainId)
+      const createTx = await escrow.createCampaign(rewardAmount, minMetric, deadline)
+      setWalletStatus('pending')
+      await createTx.wait()
+      const chainNumericId = Number(await escrow.campaignCount())
 
-      await withTx('Lock reward', async () => {
-        const { usdc, escrow, addrs } = getContracts(signer, chainId)
-        const allowance = await usdc.allowance(address, addrs.escrow)
-        if (allowance < rewardAmount) {
-          await (await usdc.approve(addrs.escrow, rewardAmount)).wait()
-        }
-        await (await escrow.fundCampaign(chainNumericId)).wait()
-      })
+      const allowance = await usdc.allowance(address, addrs.escrow)
+      if (allowance < rewardAmount) {
+        await (await usdc.approve(addrs.escrow, rewardAmount)).wait()
+      }
+      const fundTx = await escrow.fundCampaign(chainNumericId)
+      const receipt = await fundTx.wait()
+      const hash = receipt?.hash ?? fundTx.hash
 
       const brief = buildBrief(chainNumericId, false)
       saveLocalBrief(brief)
       setLiveId(brief.id)
-      setStep(3)
+      setWalletTxHash(hash)
+      setWalletIsMock(false)
+      setWalletStatus('success')
+      push({
+        kind: 'success',
+        title: 'Campaign launched',
+        detail: `$${rewardNum} locked on Sepolia.`,
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Transaction failed'
+      setWalletStatus('error')
+      setWalletError(msg.slice(0, 160))
     } finally {
       setBusy(false)
     }
+  }
+
+  function closeFundWallet() {
+    setWalletOpen(false)
+    if (liveId) setStep(3)
   }
 
   return (
@@ -506,7 +551,7 @@ export function NewCampaign() {
           <Button
             loading={busy}
             disabled={!coverImage || !rewardValid()}
-            onClick={() => void fundAndLaunch()}
+            onClick={openFundWallet}
           >
             Launch campaign
           </Button>
@@ -542,6 +587,25 @@ export function NewCampaign() {
           <Button onClick={() => navigate(`/campaigns/${liveId}`)}>View campaign</Button>
         </div>
       )}
+
+      <WalletTxModal
+        open={walletOpen}
+        title="Lock campaign reward"
+        description="Approve & fund escrow for this campaign."
+        amountLabel={`$${(Number(reward) || 0).toLocaleString(undefined, {
+          maximumFractionDigits: 2,
+        })}`}
+        tokenLabel={walletIsMock ? 'USDC (demo)' : 'USDC'}
+        network="Ethereum Sepolia"
+        status={walletStatus}
+        txHash={walletTxHash}
+        isMockTx={walletIsMock}
+        errorMessage={walletError}
+        confirmLabel="Confirm"
+        onConfirm={() => void confirmFundWallet()}
+        onReject={() => setWalletOpen(false)}
+        onClose={closeFundWallet}
+      />
 
       <AiChat mode="campaign" open={aiOpen} onClose={() => setAiOpen(false)} />
     </div>
