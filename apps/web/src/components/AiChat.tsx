@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Sparkles, X } from 'lucide-react'
+import { Loader2, Mic, MicOff, Sparkles, Volume2, X } from 'lucide-react'
 import { Button } from './Button'
 import { askAi, saveDraft, type CampaignDraft } from '../lib/ai'
 
@@ -13,6 +13,36 @@ type Props = {
   title?: string
 }
 
+type SpeechRecognitionLike = {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  start: () => void
+  stop: () => void
+  abort: () => void
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null
+  onerror: ((event: { error: string }) => void) | null
+  onend: (() => void) | null
+}
+
+type SpeechRecognitionResultEventLike = {
+  resultIndex: number
+  results: ArrayLike<{
+    isFinal: boolean
+    0: { transcript: string }
+  }>
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike
+
+function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
+  const w = window as Window & {
+    SpeechRecognition?: SpeechRecognitionCtor
+    webkitSpeechRecognition?: SpeechRecognitionCtor
+  }
+  return w.SpeechRecognition || w.webkitSpeechRecognition || null
+}
+
 export function AiChat({ mode, open, onClose, context, title }: Props) {
   const navigate = useNavigate()
   const [input, setInput] = useState('')
@@ -20,11 +50,39 @@ export function AiChat({ mode, open, onClose, context, title }: Props) {
   const [reply, setReply] = useState<string | null>(null)
   const [draft, setDraft] = useState<CampaignDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [listening, setListening] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const autoSendRef = useRef(false)
 
-  if (!open) return null
+  useEffect(() => {
+    setVoiceSupported(Boolean(getSpeechRecognitionCtor()))
+  }, [])
 
-  async function send() {
-    const message = input.trim()
+  useEffect(() => {
+    if (!open) {
+      recognitionRef.current?.abort()
+      recognitionRef.current = null
+      setListening(false)
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+      setSpeaking(false)
+    }
+  }, [open])
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort()
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
+
+  async function send(messageOverride?: string) {
+    const message = (messageOverride ?? input).trim()
     if (!message || busy) return
     setBusy(true)
     setError(null)
@@ -52,6 +110,84 @@ export function AiChat({ mode, open, onClose, context, title }: Props) {
     onClose()
     navigate('/campaigns/new')
   }
+
+  function toggleListening() {
+    if (!voiceSupported || busy) return
+
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+
+    const Ctor = getSpeechRecognitionCtor()
+    if (!Ctor) return
+
+    const recognition = new Ctor()
+    recognition.lang = 'en-US'
+    recognition.continuous = false
+    recognition.interimResults = true
+    autoSendRef.current = false
+
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        transcript += event.results[i][0].transcript
+      }
+      const trimmed = transcript.trim()
+      if (!trimmed) return
+      setInput(trimmed)
+
+      const last = event.results[event.results.length - 1]
+      if (last?.isFinal && !autoSendRef.current) {
+        autoSendRef.current = true
+        recognition.stop()
+        void send(trimmed)
+      }
+    }
+
+    recognition.onerror = (event) => {
+      setListening(false)
+      if (event.error === 'not-allowed') {
+        setError('Microphone permission denied. Allow mic access to use voice.')
+      } else if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        setError('Voice input failed. Try typing instead.')
+      }
+    }
+
+    recognition.onend = () => {
+      setListening(false)
+      recognitionRef.current = null
+    }
+
+    recognitionRef.current = recognition
+    try {
+      recognition.start()
+      setListening(true)
+      setError(null)
+    } catch {
+      setListening(false)
+      setError('Could not start voice input. Try again.')
+    }
+  }
+
+  function speakReply() {
+    if (!reply || typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    if (speaking) {
+      window.speechSynthesis.cancel()
+      setSpeaking(false)
+      return
+    }
+    window.speechSynthesis.cancel()
+    const utter = new SpeechSynthesisUtterance(reply)
+    utter.lang = 'en-US'
+    utter.onend = () => setSpeaking(false)
+    utter.onerror = () => setSpeaking(false)
+    setSpeaking(true)
+    window.speechSynthesis.speak(utter)
+  }
+
+  if (!open) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-4 sm:items-center">
@@ -87,8 +223,20 @@ export function AiChat({ mode, open, onClose, context, title }: Props) {
           )}
 
           {reply && (
-            <div className="rounded-2xl bg-bg px-3 py-3 text-sm leading-relaxed whitespace-pre-wrap text-ink">
-              {reply}
+            <div className="space-y-2">
+              <div className="rounded-2xl bg-bg px-3 py-3 text-sm leading-relaxed whitespace-pre-wrap text-ink">
+                {reply}
+              </div>
+              {'speechSynthesis' in window && (
+                <button
+                  type="button"
+                  onClick={speakReply}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-navy"
+                >
+                  <Volume2 className={`size-3.5 ${speaking ? 'animate-pulse' : ''}`} />
+                  {speaking ? 'Stop speaking' : 'Speak reply'}
+                </button>
+              )}
             </div>
           )}
 
@@ -108,17 +256,53 @@ export function AiChat({ mode, open, onClose, context, title }: Props) {
         </div>
 
         <div className="space-y-2 border-t border-border px-4 py-3">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            rows={3}
-            placeholder={
-              mode === 'campaign'
-                ? 'e.g. We’re a skincare startup launching a SPF mist…'
-                : 'e.g. What should I include when I apply?'
-            }
-            className="w-full rounded-2xl bg-bg px-3 py-2.5 text-sm outline-none"
-          />
+          <div className="relative">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              rows={3}
+              placeholder={
+                listening
+                  ? 'Listening…'
+                  : mode === 'campaign'
+                    ? 'e.g. We’re a skincare startup launching a SPF mist…'
+                    : 'e.g. What should I include when I apply?'
+              }
+              className="w-full rounded-2xl bg-bg px-3 py-2.5 pr-12 text-sm outline-none"
+            />
+            <button
+              type="button"
+              onClick={toggleListening}
+              disabled={busy || !voiceSupported}
+              title={
+                voiceSupported
+                  ? listening
+                    ? 'Stop listening'
+                    : 'Speak your message'
+                  : 'Voice not supported in this browser'
+              }
+              aria-label={
+                voiceSupported
+                  ? listening
+                    ? 'Stop listening'
+                    : 'Speak your message'
+                  : 'Voice not supported in this browser'
+              }
+              className={`absolute right-2 bottom-2 flex size-9 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                listening
+                  ? 'animate-pulse bg-danger text-white'
+                  : 'bg-navy text-white hover:bg-[#152a4a]'
+              }`}
+            >
+              {listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+            </button>
+          </div>
+          {listening && (
+            <p className="text-xs font-medium text-danger">Listening — speak now (en-US)</p>
+          )}
+          {!voiceSupported && (
+            <p className="text-xs text-muted">Voice not supported in this browser — type instead.</p>
+          )}
           <div className="flex gap-2">
             <Button
               className="flex-1"
