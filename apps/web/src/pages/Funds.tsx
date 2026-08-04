@@ -7,18 +7,20 @@ import { useToast } from '../context/ToastProvider'
 import { useWallet } from '../context/WalletProvider'
 import { getContracts, readProvider } from '../lib/contracts'
 import { formatUsdc, parseUsdc, truncateAddress } from '../lib/format'
-import { loadCreatorProfile } from '../lib/store'
+import { creditDemoUsdc, loadCreatorProfile, loadDemoUsdc } from '../lib/store'
 
 const DEMO_AMOUNT = '1000'
 
-/** One-click demo USDC top-up for the connected wallet */
+/** One-click demo USDC top-up — mock by default, optional on-chain mint */
 export function Funds() {
   const navigate = useNavigate()
   const { signer, chainId, address } = useWallet()
   const { withTx, push } = useToast()
   const [ethBal, setEthBal] = useState<string>('—')
-  const [usdcBal, setUsdcBal] = useState<string>('—')
+  const [onChainUsdc, setOnChainUsdc] = useState<string>('—')
+  const [demoUsdc, setDemoUsdc] = useState(() => loadDemoUsdc())
   const [busy, setBusy] = useState(false)
+  const [chainBusy, setChainBusy] = useState(false)
   const [last, setLast] = useState<string | null>(null)
   const username = loadCreatorProfile().username.trim()
 
@@ -43,6 +45,7 @@ export function Funds() {
   }
 
   async function refresh() {
+    setDemoUsdc(loadDemoUsdc())
     if (!address) return
     const provider = readProvider(chainId)
     try {
@@ -53,9 +56,9 @@ export function Funds() {
     }
     try {
       const { usdc } = getContracts(provider, chainId)
-      setUsdcBal(formatUsdc(await usdc.balanceOf(address)))
+      setOnChainUsdc(formatUsdc(await usdc.balanceOf(address)))
     } catch {
-      setUsdcBal('—')
+      setOnChainUsdc('—')
     }
   }
 
@@ -63,18 +66,25 @@ export function Funds() {
     void refresh()
   }, [address, chainId])
 
-  async function getDemoFunds() {
+  function getDemoFunds() {
+    const next = creditDemoUsdc(1000)
+    setDemoUsdc(next)
+    setLast(`Demo balance is now $${next.toLocaleString()}. Ready to fund campaigns.`)
+    push({ kind: 'success', title: 'Demo funds added' })
+  }
+
+  async function getOnChainUsdc() {
     if (!address) {
       push({
         kind: 'info',
         title: 'Sign in first',
-        detail: 'Connect your account, then tap Get demo funds.',
+        detail: 'Connect your account, then tap Get on-chain USDC.',
       })
       navigate('/signin')
       return
     }
 
-    setBusy(true)
+    setChainBusy(true)
     try {
       const r = await fetch('/api/faucet', {
         method: 'POST',
@@ -89,11 +99,11 @@ export function Funds() {
 
       if (r.ok) {
         const amt = data.amount || DEMO_AMOUNT
-        setLast(`You received $${amt} demo USDC.`)
+        setLast(`You received $${amt} on-chain MockUSDC.`)
         push({
           kind: 'success',
-          title: `You received $${amt} demo USDC`,
-          detail: 'Ready to fund campaigns.',
+          title: `You received $${amt} on-chain USDC`,
+          detail: 'Ready for real Sepolia txs.',
         })
         await refresh()
         return
@@ -101,15 +111,15 @@ export function Funds() {
 
       // Fallback: MockUSDC has public mint — mint from connected wallet
       if (signer) {
-        await withTx('Get demo funds', async () => {
+        await withTx('Get on-chain USDC', async () => {
           const { usdc } = getContracts(signer, chainId)
           await (await usdc.mint(address, parseUsdc(DEMO_AMOUNT))).wait()
         })
-        setLast(`You received $${DEMO_AMOUNT} demo USDC.`)
+        setLast(`You received $${DEMO_AMOUNT} on-chain MockUSDC.`)
         push({
           kind: 'success',
-          title: `You received $${DEMO_AMOUNT} demo USDC`,
-          detail: 'Ready to fund campaigns.',
+          title: `You received $${DEMO_AMOUNT} on-chain USDC`,
+          detail: 'Ready for real Sepolia txs.',
         })
         await refresh()
         return
@@ -119,11 +129,11 @@ export function Funds() {
     } catch (e) {
       push({
         kind: 'error',
-        title: 'Could not get demo funds',
-        detail: e instanceof Error ? e.message : 'Try again',
+        title: 'On-chain faucet failed',
+        detail: e instanceof Error ? e.message : 'Use Get demo funds instead (no gas).',
       })
     } finally {
-      setBusy(false)
+      setChainBusy(false)
     }
   }
 
@@ -134,8 +144,8 @@ export function Funds() {
         <h1 className="mt-0.5 text-[28px] font-bold tracking-tight text-ink">Add demo funds</h1>
       </div>
       <p className="text-sm text-muted">
-        One tap adds ${DEMO_AMOUNT} demo USDC (test dollars) to your signed-in wallet — enough to
-        create, fund, and try a creator payout. Not real cash.
+        One tap adds ${DEMO_AMOUNT} demo USDC locally — enough to create and fund campaigns with no
+        gas. Optional on-chain mint is available when Sepolia gas works.
       </p>
 
       <div className="card-surface p-5">
@@ -174,18 +184,37 @@ export function Funds() {
         ) : null}
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-bg px-3 py-3">
-            <p className="text-[11px] text-muted">Network balance</p>
-            <p className="text-lg font-bold">{ethBal}</p>
+            <p className="text-[11px] text-muted">Demo balance</p>
+            <p className="text-lg font-bold">${demoUsdc.toLocaleString()}</p>
           </div>
           <div className="rounded-2xl bg-bg px-3 py-3">
-            <p className="text-[11px] text-muted">Demo USDC (test dollars)</p>
-            <p className="text-lg font-bold">${usdcBal}</p>
+            <p className="text-[11px] text-muted">On-chain USDC</p>
+            <p className="text-lg font-bold">${onChainUsdc}</p>
+          </div>
+          <div className="col-span-2 rounded-2xl bg-bg px-3 py-3">
+            <p className="text-[11px] text-muted">Network ETH (gas)</p>
+            <p className="text-lg font-bold">{ethBal}</p>
           </div>
         </div>
       </div>
 
-      <Button loading={busy} onClick={() => void getDemoFunds()}>
+      <Button loading={busy} onClick={() => {
+        setBusy(true)
+        try {
+          getDemoFunds()
+        } finally {
+          setBusy(false)
+        }
+      }}>
         <Coins className="size-4" /> Get demo funds
+      </Button>
+
+      <Button
+        variant="secondary"
+        loading={chainBusy}
+        onClick={() => void getOnChainUsdc()}
+      >
+        Get on-chain USDC
       </Button>
 
       {last && (

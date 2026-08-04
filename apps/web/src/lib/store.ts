@@ -15,6 +15,33 @@ const SUBMISSIONS_KEY = 'pact.submissions'
 const BRIEFS_KEY = 'pact.campaign.briefs'
 const WELCOME_KEY = 'pact.welcome.done'
 const ONBOARDING_KEY = 'pact.onboarding.seen'
+const DEMO_USDC_KEY = 'trendit.demoUsdc'
+
+/** Mock demo USDC balance (localStorage) — no chain / no gas */
+export function loadDemoUsdc(): number {
+  const n = Number(localStorage.getItem(DEMO_USDC_KEY) || '0')
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+export function saveDemoUsdc(amount: number) {
+  const next = Math.max(0, Math.round(amount * 100) / 100)
+  localStorage.setItem(DEMO_USDC_KEY, String(next))
+  return next
+}
+
+/** Add demo funds; ensures balance is at least `amount` after credit */
+export function creditDemoUsdc(amount = 1000): number {
+  const next = Math.max(loadDemoUsdc() + amount, amount)
+  return saveDemoUsdc(next)
+}
+
+/** Deduct mock balance; returns false if insufficient */
+export function deductDemoUsdc(amount: number): boolean {
+  const cur = loadDemoUsdc()
+  if (cur < amount) return false
+  saveDemoUsdc(cur - amount)
+  return true
+}
 
 export function isOnboardingSeen(): boolean {
   return localStorage.getItem(ONBOARDING_KEY) === '1'

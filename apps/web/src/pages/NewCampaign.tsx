@@ -9,7 +9,12 @@ import { useApp } from '../context/AppProvider'
 import { clearDraft, loadDraft } from '../lib/ai'
 import { getContracts } from '../lib/contracts'
 import { daysFromNow, parseUsdc, truncateAddress } from '../lib/format'
-import { fileToDataUrl, saveLocalBrief } from '../lib/store'
+import {
+  deductDemoUsdc,
+  fileToDataUrl,
+  loadDemoUsdc,
+  saveLocalBrief,
+} from '../lib/store'
 import type {
   CampaignBrief,
   CampaignType,
@@ -40,11 +45,12 @@ const PLATFORMS = ['TikTok', 'Instagram', 'YouTube', 'X']
 export function NewCampaign() {
   const { role, brand } = useApp()
   const { signer, chainId, address, mode } = useWallet()
-  const { withTx } = useToast()
+  const { withTx, push } = useToast()
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
   const [liveId, setLiveId] = useState<string | null>(null)
+  const [demoUsdc, setDemoUsdc] = useState(() => loadDemoUsdc())
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -90,6 +96,10 @@ export function NewCampaign() {
     clearDraft()
   }, [])
 
+  useEffect(() => {
+    if (step === 3) setDemoUsdc(loadDemoUsdc())
+  }, [step])
+
   if (role !== 'brand') {
     return (
       <div className="card-surface space-y-3 p-5">
@@ -127,13 +137,85 @@ export function NewCampaign() {
     return Number.isFinite(n) && n >= 1
   }
 
+  function buildBrief(chainNumericId: number | undefined, mock: boolean): CampaignBrief {
+    return {
+      id: mock
+        ? `demo-${Date.now()}`
+        : `local-${chainNumericId}-${Date.now()}`,
+      source: 'local',
+      chainNumericId: mock ? undefined : chainNumericId,
+      title,
+      brandName: brand.name || 'Brand',
+      description,
+      campaignType,
+      category,
+      budgetUsdc: Number(reward) || 0,
+      minViews: Number(minViews) || 0,
+      durationDays: Number(days) || 7,
+      platforms,
+      deliverables,
+      hashtags,
+      wantStyle,
+      avoidStyle,
+      talkingPoints,
+      dos,
+      donts,
+      coverImage,
+      assetImages,
+      selectionMode,
+      status: 'live',
+      createdAt: Date.now(),
+    }
+  }
+
   async function fundAndLaunch() {
-    if (!signer || !address) return
     if (!title.trim() || !coverImage) {
       setStep(0)
       return
     }
     if (!rewardValid()) return
+
+    const rewardNum = Number(reward) || 0
+    const mockBal = loadDemoUsdc()
+
+    // Prefer mock launch when demo balance covers the reward (no gas)
+    if (mockBal >= rewardNum && rewardNum > 0) {
+      setBusy(true)
+      try {
+        if (!deductDemoUsdc(rewardNum)) {
+          push({
+            kind: 'error',
+            title: 'Not enough demo funds',
+            detail: 'Top up from Funds, then try again.',
+          })
+          return
+        }
+        setDemoUsdc(loadDemoUsdc())
+        const brief = buildBrief(undefined, true)
+        saveLocalBrief(brief)
+        setLiveId(brief.id)
+        setStep(3)
+        push({
+          kind: 'success',
+          title: 'Campaign launched (demo)',
+          detail: `$${rewardNum} locked from demo balance.`,
+        })
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+
+    if (!signer || !address) {
+      push({
+        kind: 'info',
+        title: 'Need demo funds or a wallet',
+        detail: 'Get demo funds on Funds (no gas), or connect a wallet with on-chain USDC.',
+      })
+      navigate('/funds')
+      return
+    }
+
     setBusy(true)
     try {
       const rewardAmount = parseUsdc(reward)
@@ -156,32 +238,7 @@ export function NewCampaign() {
         await (await escrow.fundCampaign(chainNumericId)).wait()
       })
 
-      const brief: CampaignBrief = {
-        id: `local-${chainNumericId}-${Date.now()}`,
-        source: 'local',
-        chainNumericId,
-        title,
-        brandName: brand.name || 'Brand',
-        description,
-        campaignType,
-        category,
-        budgetUsdc: Number(reward) || 0,
-        minViews: Number(minViews) || 0,
-        durationDays: Number(days) || 7,
-        platforms,
-        deliverables,
-        hashtags,
-        wantStyle,
-        avoidStyle,
-        talkingPoints,
-        dos,
-        donts,
-        coverImage,
-        assetImages,
-        selectionMode,
-        status: 'live',
-        createdAt: Date.now(),
-      }
+      const brief = buildBrief(chainNumericId, false)
       saveLocalBrief(brief)
       setLiveId(brief.id)
       setStep(3)
@@ -426,8 +483,10 @@ export function NewCampaign() {
           <div className="card-surface space-y-3 p-5">
             <h2 className="text-[17px] font-bold">Lock your reward</h2>
             <p className="text-sm text-muted">
-              Your reward is held safely until creators deliver. Wallet:{' '}
-              {truncateAddress(address, 4)}
+              {demoUsdc >= (Number(reward) || 0) && (Number(reward) || 0) > 0
+                ? `Uses your demo balance ($${demoUsdc.toLocaleString()}) — no gas needed.`
+                : `On-chain lock needs USDC + gas. Demo balance: $${demoUsdc.toLocaleString()}. Get demo funds first for a gas-free launch.`}{' '}
+              Wallet: {truncateAddress(address, 4)}
               {mode === 'demo' ? ' (demo)' : ''}.
             </p>
             <Field
