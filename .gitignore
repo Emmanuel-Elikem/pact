@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+
+# Foundry
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+contracts/lib/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.log
+.vercel
