@@ -11,7 +11,9 @@ dist-ssr/
 contracts/cache/
 contracts/out/
 contracts/broadcast/
-contracts/lib/
+
+# Keep lib locally; prefer forge install on clone if missing
+# contracts/lib/ is committed without nested .git for hackathon portability
 
 # OS / IDE
 .DS_Store
@@ -19,3 +21,6 @@ contracts/lib/
 .vscode/
 *.log
 .vercel
+
+# Installed via forge install / setup script
+contracts/lib/
